@@ -1,3 +1,4 @@
+#!/bin/sh
 set -e
 
 cd /var/www/html || exit 0
