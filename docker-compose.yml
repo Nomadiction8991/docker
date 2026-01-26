@@ -4,7 +4,12 @@ services:
     build:
       context: .
       dockerfile: Dockerfiles/Dockerfile
-    image: projeto-php:local
+    container_name: Docker
+    image: docker:local
+    user: "${UID}:${GID}"
+    environment:
+      - UID=${UID}
+      - GID=${GID}
     ports:
       - "8080:80"
     volumes:

@@ -15,7 +15,12 @@ else
     echo "Composer não encontrado, pulando composer install."
 fi
 
-chown -R www-data:www-data /var/www/html || true
+if [ -n "$UID" ] && [ -n "$GID" ]; then
+    echo "Ajustando ownership para $UID:$GID"
+    chown -R "$UID":"$GID" /var/www/html || true
+else
+    chown -R www-data:www-data /var/www/html || true
+fi
 
 if [ -x /usr/local/bin/docker-php-entrypoint ]; then
     exec docker-php-entrypoint "$@"
