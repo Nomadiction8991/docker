@@ -1,0 +1,46 @@
+services:
+  web:
+    image: "${APP_NAME}-web:local"
+    container_name: "${APP_NAME}-web"
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
+    build:
+      context: .
+      dockerfile: Dockerfiles/Dockerfile-web
+    ports:
+      - "${HOST_PORT}:80"
+    volumes:
+      - ./:/var/www/html
+      - ./Dockerfiles/php.ini:/usr/local/etc/php/conf.d/dev.ini:ro
+    depends_on:
+      - db
+    networks:
+      - app_network
+    extra_hosts:
+      - "host.${APP_NAME}.internal:host-gateway"
+
+  db:
+    image: "${APP_NAME}-db:local"
+    container_name: "${APP_NAME}-db"
+    build:
+      context: .
+      dockerfile: Dockerfiles/Dockerfile-db
+    environment:
+      MYSQL_ROOT_PASSWORD: "${DB_ROOT_PASSWORD}"
+      MYSQL_DATABASE: "${DB_DATABASE}"
+      MYSQL_USER: "${DB_USER}"
+      MYSQL_PASSWORD: "${DB_PASSWORD}"
+    ports:
+      - "${DB_PORT}:3306"
+    volumes:
+      - db:/var/lib/mysql
+    networks:
+      - app_network
+
+volumes:
+  db:
+    name: "${APP_NAME}-volumes-db"
+
+networks:
+  app_network:
+    name: "${APP_NAME}-network"
+    driver: bridge
