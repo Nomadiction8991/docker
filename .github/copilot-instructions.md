@@ -1,1 +1,1 @@
-../INSTRUCTIONS.md
+../CLAUDE.md
