@@ -63,6 +63,9 @@ jobs:
             exit 1
           fi
 
+          # título case: troca - e _ por espaço, capitaliza cada palavra
+          app_name_display="$(printf '%s' "$app_name" | tr '_-' ' ' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) substr($i,2); print}')"
+
           app_url="https://${app_name_tratado}.${DOMINIO}"
           remote_dir="${app_url#https://}"
           stage_dir="build/${app_name}"
@@ -80,7 +83,7 @@ jobs:
             php scripts/update_env_value.php "$file" "$key" "$value"
           }
 
-          update_env_value APP_NAME "$app_name" "${stage_dir}/.env"
+          update_env_value APP_NAME "$app_name_display" "${stage_dir}/.env"
           update_env_value APP_URL "$app_url" "${stage_dir}/.env"
           update_env_value APP_ENV "production" "${stage_dir}/.env"
           update_env_value DB_CONNECTION "mysql" "${stage_dir}/.env"
