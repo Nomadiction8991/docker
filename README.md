@@ -1,182 +1,137 @@
-# 🐳 Docker + PHP 8.3 + Apache + Laravel
+# Docker + PHP 8.3 + Apache + Laravel
 
-Ambiente completo em Docker para desenvolvimento PHP com Apache e MySQL. No primeiro boot, cria uma aplicação Laravel nova em `/${APP_NAME}` usando a versão estável mais recente.
+Template Docker para desenvolvimento e deploy de projetos PHP/Laravel. Inclui ambiente local com Xdebug e pipeline de deploy automatizado via GitHub Actions (FTP + SSH).
 
-## ⚡ Quick Start
+## Quick Start
 
 ```bash
-# 1. Clonar e entrar no diretório
-git clone <repo-url> && cd docker
-
-# 2. Inicializar (cria .env, sobe containers e gera o Laravel em /${APP_NAME})
+git clone <repo-url> meu-projeto && cd meu-projeto
 make up
-
-# 3. Acessar
-open http://localhost:<porta-mostrada-no-terminal>
-
-# 4. Parar tudo
-make down
 ```
 
-## 📋 Requisitos
+Acesse em `http://localhost:<porta-exibida-no-terminal>`.
 
-- Docker & Docker Compose (20.10+)
-- ~500MB de espaço em disco
-- Nenhuma outra aplicação usando as portas base definidas em `.env.example`
-
-## 🏗️ Stack
-
-| Componente  | Versão           |
-| ----------- | ---------------- |
-| PHP         | 8.3              |
-| Apache      | 2.4              |
-| MySQL       | 8.0+ / MariaDB   |
-| Composer    | 2.x              |
-
-## 🎯 Arquitetura
-
-```plaintext
-┌─────────────────────────────────────────┐
-│      localhost:HOST_PORT (Host)         │
-└──────────────┬──────────────────────────┘
-               │
-      ┌────────┴────────┐
-      │   Docker        │
-      │   Network       │
-      │                 │
-  ┌───▼─────┐    ┌──────▼──────┐
-  │   web   │    │     db      │
-  │ (PHP/   │───→│   (MySQL/   │
-  │ Apache) │    │  MariaDB)   │
-  └─────────┘    └─────────────┘
-   :80→HOST_PORT :DB_PORT→DB_PORT
-   /var/www/     /var/lib/
-   html→.        mysql→db/
-```
-
-## 🚀 Comandos
-
-### Com Makefile (recomendado)
+## Comandos
 
 ```bash
-make up       # Cria .env e inicia containers em background
-make down     # Para, remove containers/volumes e limpa .env
-make help     # Lista comandos disponíveis
+make up       # Cria .env, encontra portas livres e sobe os containers
+make down     # Para containers, remove imagens/volumes e apaga .env
+make help     # Lista todos os comandos disponíveis
 ```
 
-### Docker Compose (direto)
+Acesso direto ao container:
 
 ```bash
-# Iniciar
-docker compose up --build              # foreground com rebuild
-docker compose up -d --build            # background com rebuild
-
-# Parar
-docker compose stop                     # para containers
-docker compose down                     # para e remove tudo
-
-# Logs e shell
-docker compose logs -f web              # logs em tempo real
-docker compose exec web bash            # shell do container PHP
-docker compose exec db mysql -u root -p # shell do MySQL
+docker compose exec web bash
+docker compose exec web php artisan <comando>
+docker compose ps   # status e portas publicadas
 ```
 
-## 📁 Estrutura
+## Estrutura
 
-```plaintext
-docker/
+```text
+.
 ├── Dockerfiles/
-│   ├── Dockerfile-web          # Imagem PHP/Apache
-│   ├── Dockerfile-db           # Imagem MySQL
-│   ├── php.ini                 # Configurações PHP
-│   ├── apache.conf             # VirtualHost Apache
-│   ├── boot.sh                 # Script de inicialização
-│   └── .dockerignore
-├── ${APP_NAME}/                # Aplicação Laravel gerada no primeiro boot
-├── docker-compose.yml          # Orquestração
-├── composer.json               # Dependências PHP
-├── .env.example                # Template de variáveis
-├── Makefile                    # Atalhos
-└── README.md
+│   ├── web/Dockerfile        # PHP 8.3 + Apache (multi-stage)
+│   ├── apache.conf           # VirtualHost — serve APP_NAME/public
+│   └── boot.sh               # Inicialização: composer install + migrate
+├── start-project/            # Projeto Laravel base (ponto de partida)
+├── scripts/
+│   └── update_env_value.php  # Edita variáveis no .env sem quebrar comentários
+├── .github/workflows/
+│   ├── build-image.yml       # Monta pacote Laravel para deploy
+│   ├── ftp-deploy.yml        # Envia arquivos via FTP (delta)
+│   ├── ssh-finalize.yml      # composer install + key:generate + migrate via SSH
+│   └── secrets-reference.md  # Guia de configuração dos secrets
+├── docker-compose.yml
+├── .env.example
+└── Makefile
 ```
 
-## ⚙️ Configuração
+## Configuração (.env)
 
-### Variáveis de Ambiente (.env)
+O `.env` é criado automaticamente pelo `make up` a partir do `.env.example`.
 
-O arquivo `.env` é criado automaticamente por `make up`. Edite para customizar:
+| Variável | Descrição |
+| --- | --- |
+| `APP_NAME` | Nome do app. Minúsculo, sem espaços, use `-` como separador |
+| `APP_ENV` | Estágio Docker: `local` (Xdebug, bind-mount) ou `production` |
+| `HOST_PORT` | Porta base HTTP — `make up` sobe para a primeira livre |
+| `DB_HOST` | Host do banco (padrão: `db`) |
+| `DB_PORT` | Porta base MySQL — `make up` sobe para a primeira livre |
+| `DB_DATABASE` | Nome do banco |
+| `DB_ROOT_PASSWORD` | Senha root MySQL |
+| `LOCAL_UID/GID` | UID/GID do host; vazio = detectado automaticamente |
 
-```env
-APP_NAME=docker              # Nome da pasta do Laravel e prefixo das imagens. Minusculo, sem espacos, use "-" como separador
-LOCAL_UID=                  # Vazio = usa UID do host automaticamente
-LOCAL_GID=                  # Vazio = usa GID do host automaticamente
-HOST_PORT=8080              # Base HTTP; make up sobe para a primeira livre
-DB_PORT=3306                # Base MySQL; make up sobe para a primeira livre
-DB_DATABASE=docker          # Nome do banco
-DB_ROOT_PASSWORD=root       # Senha root MySQL
+## Arquitetura Docker
+
+Dois serviços, ambos com **build multi-stage**:
+
+| Serviço | Imagem base        | Porta              |
+| ------- | ------------------ | ------------------ |
+| `web`   | PHP 8.3 + Apache   | `HOST_PORT` → 80   |
+| `db`    | MySQL 8.4          | `DB_PORT` → 3306   |
+
+Estágios da imagem `web`:
+
+- `base` — PHP, Apache, Composer
+- `production` — copia o código; sem Xdebug
+- `local` — adiciona Xdebug; usa bind-mount (sem cópia)
+
+O estágio ativo é controlado por `APP_ENV` no `.env`.
+
+### Boot do container web
+
+`Dockerfiles/boot.sh` executa na inicialização:
+
+1. `composer install` — se `vendor/` ausente ou desatualizado
+2. `php artisan migrate` — se `artisan` existir
+3. Entrypoint padrão PHP/Apache
+
+Apache serve a partir de `APP_NAME/public` com front controller via `.htaccess`.
+
+## Pipeline de Deploy (GitHub Actions)
+
+Ativado por push de tag no formato `AA.MM.DD` (ex: `26.04.25`) apontando para um commit em `main`.
+
+```text
+push de tag
+    └─► build-image       → monta pacote Laravel, publica artefato
+            └─► ftp-deploy    → envia arquivos via FTP (só o delta)
+                    └─► ssh-finalize → composer install + key:generate + migrate
 ```
 
-### PHP Customizado
+### Configurar deploy
 
-Edite `Dockerfiles/php.ini` e faça rebuild da imagem para aplicar mudanças.
+Cadastre os secrets em `Settings > Secrets and variables > Actions`:
 
-### Apache/VirtualHost
+| Secret                                                              | Descrição                                  |
+| ------------------------------------------------------------------- | ------------------------------------------ |
+| `DOMINIO`                                                           | Domínio base do servidor (FTP, SSH, URL)   |
+| `FTP_USERNAME` / `FTP_PASSWORD`                                     | Credenciais FTP                            |
+| `DB_HOST` / `DB_PORT` / `DB_DATABASE` / `DB_USERNAME` / `DB_PASSWORD` | Banco de dados                          |
+| `SSH_USERNAME` / `SSH_PORT` / `SSH_KEY`                             | Acesso SSH                                 |
+| `SSH_PATH`                                                          | Pasta raiz no servidor (ex: `/domains`)    |
 
-Apache aponta para `/${APP_NAME}/public`. Rebuild necessário se mexer na imagem ou no boot.
+Veja `.github/workflows/secrets-reference.md` para detalhes completos.
 
-## 💻 Desenvolvimento
+### Como o deploy funciona
 
-### Adicionar Dependências
+- `APP_NAME=start-project` → pasta remota: `startproject.dominio.com`
+- `APP_NAME` no `.env` de produção vira título: `"Start Project"`
+- FTP sincroniza apenas arquivos novos ou alterados (state persistido em cache)
+- SSH finaliza: `composer install --no-scripts` → `package:discover` → `key:generate` → `migrate`
+
+### Publicar uma versão
 
 ```bash
-docker compose exec web composer require package/name
-docker compose exec web composer install
+git tag 26.04.25
+git push origin main 26.04.25
 ```
 
-### Acessar Banco de Dados
+## Usando como base para novos projetos
 
-```bash
-# Terminal MySQL
-docker compose exec db mysql -uroot -p
-
-# Queries diretas
-docker compose exec db mysql -uroot -p -e "SELECT * FROM table;"
-```
-
-### Editar Código
-
-- Arquivos em `/${APP_NAME}` são sincronizados em tempo real
-- Não precisa restartear container para mudanças em `.php`
-- Para mudanças em `Dockerfiles/`, faça rebuild: `docker compose up --build`
-
-## 🔧 Troubleshooting
-
-### Porta já em uso
-
-```bash
-# make up já pula para a primeira porta livre
-```
-
-### Permissões em volumes
-
-```bash
-# Se quiser forçar manualmente:
-# preencha LOCAL_UID/LOCAL_GID em .env
-```
-
-### Erro de conexão MySQL
-
-```bash
-# Verifique credenciais em .env
-docker compose exec db mysql -u root -p
-# Ou reinicie: make down && make up
-```
-
-## 📚 Próximos Passos
-
-- Explore `Dockerfiles/` para customizações
-- Adicione migrations, modelos e controladores em `/${APP_NAME}`
-
-## 📝 Licença
-
-Este repositório é um **modelo pessoal de estudo** — use livremente como base para seus projetos.
+1. Renomeie a pasta `start-project/` para o nome do seu projeto
+2. Atualize `APP_NAME` no `.env.example`
+3. Configure os secrets no GitHub
+4. Faça push e crie uma tag para disparar o deploy
