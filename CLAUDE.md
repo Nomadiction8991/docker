@@ -9,7 +9,7 @@ Template Docker para ambientes PHP 8.3 com Apache e MySQL 8.4. Projetado como po
 ## Comandos Principais
 
 ```bash
-make up       # Cria .env a partir de .env.example (se não existir) e sobe os containers
+make up       # Cria .env, acha as portas livres a partir dos valores em .env.example/.env e sobe os containers
 make down     # Remove containers, imagens, volumes e apaga .env e vendor/
 make help     # Lista os comandos disponíveis
 ```
@@ -33,30 +33,31 @@ docker compose ps
 
 | Serviço | Dockerfile               | Porta padrão |
 |---------|--------------------------|--------------|
-| `web`   | `Dockerfiles/web/`       | 8080 → 80    |
-| `db`    | `Dockerfiles/db/`        | 3306 → 3306  |
+| `web`   | `Dockerfiles/web/`       | HOST_PORT → 80 |
+| `db`    | `Dockerfiles/db/`        | DB_PORT → DB_PORT |
 
 Ambos os serviços usam **builds multi-stage**:
 
 - `base` → dependências comuns (PHP, Apache, Composer)
-- `prod` → copia o código completo para a imagem
-- `dev`  → adiciona Xdebug; não copia o código (usa bind-mount)
+- `production` → copia o código completo para a imagem
+- `local` → adiciona Xdebug; não copia o código (usa bind-mount)
 
-O estágio é controlado pela variável `HAMBIENTE` no `.env` (ex.: `prod` ou `dev`).
+O estágio é controlado pela variável `APP_ENV` no `.env` (ex.: `production` ou `local`).
 
 ### Sequência de inicialização (web container)
 
 `Dockerfiles/boot.sh` executa na inicialização:
 
-1. `composer install` — se `vendor/` estiver ausente ou desatualizado
-2. `php artisan migrate` — apenas se o arquivo `artisan` existir
-3. Entrypoint padrão do PHP/Apache
+1. `composer create-project laravel/laravel "$APP_NAME"` — se `/$APP_NAME/artisan` não existir
+2. `composer install` — se `vendor/` estiver ausente ou desatualizado
+3. `php artisan migrate` — apenas se o arquivo `artisan` existir
+4. Entrypoint padrão do PHP/Apache
 
 ### Roteamento
 
-- Apache serve a partir de `/var/www/html/public`
+- Apache serve a partir de `/$APP_NAME/public`
 - `public/.htaccess` redireciona todas as requisições para `index.php` (front controller)
-- Namespace PSR-4: `App\` → `src/`
+- Laravel fica em `/$APP_NAME`
 
 ### Variáveis de Ambiente
 
@@ -64,15 +65,15 @@ Copiar `.env.example` para `.env` antes de iniciar. Variáveis importantes:
 
 | Variável        | Descrição                                          |
 |-----------------|----------------------------------------------------|
-| `HAMBIENTE`     | Estágio Docker (`prod` ou `dev`)                   |
+| `APP_ENV`       | Estágio Docker (`production` ou `local`)           |
 | `APP_NAME`      | Prefixo das imagens geradas                        |
-| `HOST_PORT`     | Porta do host para o Apache                        |
-| `DB_USERNAME`   | Usuário do banco (usar este, não DB_USER)          |
-| `LOCAL_UID/GID` | UID/GID do host para evitar problemas de permissão |
+| `HOST_PORT`     | Porta base do host para o Apache                   |
+| `DB_PORT`       | Porta base do MySQL                                |
+| `DB_ROOT_PASSWORD` | Senha root do MySQL                              |
+| `LOCAL_UID/GID` | UID/GID do host; se vazio, usa o do host automático |
 
 ## Convenções do Projeto
 
-- Usar `DB_USERNAME` (e não `DB_USER`) nas configurações de banco.
+- `make up` ajusta `HOST_PORT` e `DB_PORT` para a primeira porta livre.
 - Validar portas publicadas com `docker compose ps` após alterações no compose.
-- Expor portas de banco ao host apenas em desenvolvimento; em produção, manter `db` apenas na rede interna `app_network`.
 - Documentação e mensagens em PT-BR; código em inglês.

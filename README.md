@@ -1,6 +1,6 @@
-# 🐳 Docker + PHP 8.3 + Apache
+# 🐳 Docker + PHP 8.3 + Apache + Laravel
 
-Ambiente completo em Docker para desenvolvimento PHP com Apache e MySQL. Criado como **modelo reutilizável** para servir de base em novos projetos.
+Ambiente completo em Docker para desenvolvimento PHP com Apache e MySQL. No primeiro boot, cria uma aplicação Laravel nova em `/${APP_NAME}` usando a versão estável mais recente.
 
 ## ⚡ Quick Start
 
@@ -8,11 +8,11 @@ Ambiente completo em Docker para desenvolvimento PHP com Apache e MySQL. Criado 
 # 1. Clonar e entrar no diretório
 git clone <repo-url> && cd docker
 
-# 2. Inicializar (cria .env e sobe containers)
+# 2. Inicializar (cria .env, sobe containers e gera o Laravel em /${APP_NAME})
 make up
 
 # 3. Acessar
-open http://localhost:8080
+open http://localhost:<porta-mostrada-no-terminal>
 
 # 4. Parar tudo
 make down
@@ -22,7 +22,7 @@ make down
 
 - Docker & Docker Compose (20.10+)
 - ~500MB de espaço em disco
-- Nenhuma outra aplicação usando portas 8080 ou 3306
+- Nenhuma outra aplicação usando as portas base definidas em `.env.example`
 
 ## 🏗️ Stack
 
@@ -37,7 +37,7 @@ make down
 
 ```plaintext
 ┌─────────────────────────────────────────┐
-│          localhost:8080 (Host)          │
+│      localhost:HOST_PORT (Host)         │
 └──────────────┬──────────────────────────┘
                │
       ┌────────┴────────┐
@@ -49,7 +49,7 @@ make down
   │ (PHP/   │───→│   (MySQL/   │
   │ Apache) │    │  MariaDB)   │
   └─────────┘    └─────────────┘
-   :80→8080      :3306→3306
+   :80→HOST_PORT :DB_PORT→DB_PORT
    /var/www/     /var/lib/
    html→.        mysql→db/
 ```
@@ -92,9 +92,7 @@ docker/
 │   ├── apache.conf             # VirtualHost Apache
 │   ├── boot.sh                 # Script de inicialização
 │   └── .dockerignore
-├── public/                     # Document Root (Apache)
-│   └── index.php               # Ponto de entrada
-├── src/                        # Código PHP (PSR-4)
+├── ${APP_NAME}/                # Aplicação Laravel gerada no primeiro boot
 ├── docker-compose.yml          # Orquestração
 ├── composer.json               # Dependências PHP
 ├── .env.example                # Template de variáveis
@@ -109,24 +107,22 @@ docker/
 O arquivo `.env` é criado automaticamente por `make up`. Edite para customizar:
 
 ```env
-APP_NAME=docker              # Nome da aplicação
-LOCAL_UID=1000              # UID do usuário (corrija permissões em volumes)
-LOCAL_GID=1000              # GID do usuário
-HOST_PORT=8080              # Porta HTTP
-DB_PORT=3306                # Porta MySQL
+APP_NAME=docker              # Nome da pasta do Laravel e prefixo das imagens. Minusculo, sem espacos, use "-" como separador
+LOCAL_UID=                  # Vazio = usa UID do host automaticamente
+LOCAL_GID=                  # Vazio = usa GID do host automaticamente
+HOST_PORT=8080              # Base HTTP; make up sobe para a primeira livre
+DB_PORT=3306                # Base MySQL; make up sobe para a primeira livre
 DB_DATABASE=docker          # Nome do banco
-DB_USER=docker              # Usuário MySQL
-DB_PASSWORD=app123          # Senha MySQL
 DB_ROOT_PASSWORD=root       # Senha root MySQL
 ```
 
 ### PHP Customizado
 
-Edite `Dockerfiles/php.ini` para mudar configurações PHP (ex: upload_max_filesize, memory_limit).
+Edite `Dockerfiles/php.ini` e faça rebuild da imagem para aplicar mudanças.
 
 ### Apache/VirtualHost
 
-Configure routes em `Dockerfiles/apache.conf` (requer rebuild: `docker compose up --build`).
+Apache aponta para `/${APP_NAME}/public`. Rebuild necessário se mexer na imagem ou no boot.
 
 ## 💻 Desenvolvimento
 
@@ -141,15 +137,15 @@ docker compose exec web composer install
 
 ```bash
 # Terminal MySQL
-docker compose exec db mysql -u docker -p
+docker compose exec db mysql -uroot -p
 
 # Queries diretas
-docker compose exec db mysql -u docker -p -e "SELECT * FROM table;"
+docker compose exec db mysql -uroot -p -e "SELECT * FROM table;"
 ```
 
 ### Editar Código
 
-- Arquivos em `public/` e `src/` são sincronizados em tempo real
+- Arquivos em `/${APP_NAME}` são sincronizados em tempo real
 - Não precisa restartear container para mudanças em `.php`
 - Para mudanças em `Dockerfiles/`, faça rebuild: `docker compose up --build`
 
@@ -158,17 +154,14 @@ docker compose exec db mysql -u docker -p -e "SELECT * FROM table;"
 ### Porta já em uso
 
 ```bash
-# Mude HOST_PORT em .env
-# Ou mate o processo:
-lsof -ti:8080 | xargs kill -9
+# make up já pula para a primeira porta livre
 ```
 
 ### Permissões em volumes
 
 ```bash
-# Rebuild com UID/GID corretos:
-grep -E "^(UID|GID)" /etc/login.defs | awk '{print $NF}'
-# Atualize LOCAL_UID/LOCAL_GID em .env
+# Se quiser forçar manualmente:
+# preencha LOCAL_UID/LOCAL_GID em .env
 ```
 
 ### Erro de conexão MySQL
@@ -181,9 +174,8 @@ docker compose exec db mysql -u root -p
 
 ## 📚 Próximos Passos
 
-- Leia [INSTRUCTIONS.md](INSTRUCTIONS.md) para detalhes técnicos
 - Explore `Dockerfiles/` para customizações
-- Adicione migrations, modelos e controladores em `src/App/`
+- Adicione migrations, modelos e controladores em `/${APP_NAME}`
 
 ## 📝 Licença
 
